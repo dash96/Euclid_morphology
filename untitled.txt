@@ -1,0 +1,9 @@
+pic-internship-euclid-validation/
+├── notebooks/
+│   ├── 01_sky_coverage_healpix.ipynb
+│   ├── 02_magnitude_histogram.ipynb
+│   └── 03_redshift_distribution.ipynb
+├── src/
+│   └── astro_plot_utils.py          ← only one file with general helpers
+├── plots/
+└── requirements.txt
