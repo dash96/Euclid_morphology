@@ -10,28 +10,53 @@ from typing import Union, Tuple, Optional, Callable, Any
 
 def load_table(
     path: str,
-    format: str = "auto",           # "csv", "parquet", "fits"
+    format: str = "auto",
     hdu: int = 1,
+    dropna: bool = False,                  # new: default False → safe
+    dropna_subset: Optional[list[str]] = None,  # optional: only drop if these columns are NaN
 ) -> Union[pd.DataFrame, np.recarray]:
-    """Unified loader for csv / parquet / fits table"""
+    """
+    Unified loader for csv / parquet / fits table.
+    
+    Args:
+        dropna: If True, drop rows where **any** column is NaN (after loading as DataFrame).
+        dropna_subset: If provided, only drop rows where these specific columns are NaN.
+                       Ignored if dropna=False.
+    """
     fmt = format.lower()
     if fmt == "auto":
         if path.endswith(".csv"):
             fmt = "csv"
         elif path.endswith((".parquet", ".pq")):
             fmt = "parquet"
-        elif path.endswith(".fits") or path.endswith(".fit"):
+        elif path.endswith((".fits", ".fit")):
             fmt = "fits"
 
     if fmt == "csv":
-        return pd.read_csv(path)
+        df = pd.read_csv(path)
     elif fmt == "parquet":
-        return pd.read_parquet(path)
+        df = pd.read_parquet(path)
     elif fmt == "fits":
         with fits.open(path) as hdul:
-            return hdul[hdu].data
+            data = hdul[hdu].data
+            # Convert FITS recarray → DataFrame for consistency & easier NaN handling
+            df = pd.DataFrame(data)
     else:
         raise ValueError(f"Unsupported format: {fmt}")
+
+    # Optional NaN cleaning (only on DataFrame)
+    if dropna:
+        if dropna_subset:
+            df = df.dropna(subset=dropna_subset)
+        else:
+            df = df.dropna()  # any column NaN → drop row
+
+    # Decide return type
+    if fmt == "fits" and not dropna:
+        # If no dropna requested, return original recarray for fidelity
+        return data
+    else:
+        return df
 
 
 def extract_columns(
@@ -141,3 +166,19 @@ def quick_plot(
     if save:
         plt.savefig(save, dpi=160, bbox_inches="tight")
     plt.show()
+
+
+def flux_to_ab_magnitude(
+    flux: np.ndarray,
+    zp: float = 22.5,
+    min_flux: float = 1e-30,
+) -> np.ndarray:
+    """
+    Convert flux → AB magnitude (any band).
+    Safe for zero/negative fluxes → returns NaN.
+    """
+    flux = np.asarray(flux, dtype=float)
+    mag = np.full_like(flux, np.nan)
+    valid = flux > min_flux
+    mag[valid] = -2.5 * np.log10(flux[valid]) + zp
+    return mag
